@@ -1,0 +1,248 @@
+--- /dev/null
++++ b/fabric-example-mod/src/main/resources/fabric.mod.json
+@@ -0,0 +1,30 @@
++{
++	"schemaVersion": 1,
++	"id": "jeskocar",
++	"version": "${version}",
++	"name": "Jesko Car Mod",
++	"description": "Adds a driveable Koenigsegg Jesko hypercar to Minecraft.",
++	"authors": [
++		"Jules"
++	],
++	"contact": {
++		"homepage": "https://fabricmc.net/"
++	},
++	"license": "CC0-1.0",
++	"icon": "assets/jeskocar/icon.png",
++	"environment": "*",
++	"entrypoints": {
++		"main": [
++			"com.example.ExampleMod"
++		],
++		"client": [
++			"com.example.client.ExampleModClient"
++		]
++	},
++	"depends": {
++		"fabricloader": ">=0.16.5",
++		"minecraft": "~1.21.1",
++		"java": ">=21",
++		"fabric-api": "*"
++	}
++}
+--- /dev/null
++++ b/fabric-example-mod/src/main/java/com/example/ExampleMod.java
+@@ -0,0 +1,33 @@
++package com.example;
++
++import net.fabricmc.api.ModInitializer;
++import net.minecraft.core.Registry;
++import net.minecraft.core.registries.BuiltInRegistries;
++import net.minecraft.util.Identifier;
++import net.minecraft.world.entity.EntityType;
++import net.minecraft.world.entity.MobCategory;
++import net.minecraft.world.item.Item;
++import net.minecraft.world.item.SpawnEggItem;
++import org.slf4j.Logger;
++import org.slf4j.LoggerFactory;
++
++public class ExampleMod implements ModInitializer {
++	public static final String MOD_ID = "jeskocar";
++	public static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);
++
++	public static final EntityType<CarEntity> CAR_ENTITY = Registry.register(
++			BuiltInRegistries.ENTITY_TYPE,
++			Identifier.of(MOD_ID, "car"),
++			EntityType.Builder.of(CarEntity::new, MobCategory.MISC)
++					.sized(2.5f, 1.0f)
++					.build()
++	);
++
++	public static final Item CAR_SPAWN_EGG = Registry.register(
++			BuiltInRegistries.ITEM,
++			Identifier.of(MOD_ID, "car_spawn_egg"),
++			new SpawnEggItem(CAR_ENTITY, 0xFF0000, 0x000000, new Item.Properties())
++	);
++
++	@Override
++	public void onInitialize() {
++		LOGGER.info("Jesko Car Mod initialized!");
++	}
++}
+--- /dev/null
++++ b/fabric-example-mod/src/main/java/com/example/CarEntity.java
+@@ -0,0 +1,66 @@
++package com.example;
++
++import net.minecraft.server.level.ServerLevel;
++import net.minecraft.world.InteractionHand;
++import net.minecraft.world.InteractionResult;
++import net.minecraft.world.damagesource.DamageSource;
++import net.minecraft.world.entity.AgeableMob;
++import net.minecraft.world.entity.EntityType;
++import net.minecraft.world.entity.LivingEntity;
++import net.minecraft.world.entity.animal.Animal;
++import net.minecraft.world.entity.player.Player;
++import net.minecraft.world.level.Level;
++import net.minecraft.world.phys.Vec3;
++
++public class CarEntity extends Animal {
++    public CarEntity(EntityType<? extends Animal> entityType, Level level) {
++        super(entityType, level);
++        this.setMaxUpStep(1.0f);
++    }
++
++    @Override
++    public boolean isBaby() {
++        return false;
++    }
++
++    @Override
++    public AgeableMob getBreedOffspring(ServerLevel level, AgeableMob otherParent) {
++        return null;
++    }
++
++    @Override
++    public boolean hurt(DamageSource source, float amount) {
++        if (source.getEntity() instanceof Player && ((Player) source.getEntity()).isCreative()) {
++            return super.hurt(source, amount);
++        }
++        return false;
++    }
++
++    @Override
++    public InteractionResult mobInteract(Player player, InteractionHand hand) {
++        if (!this.level().isClientSide) {
++            player.startRiding(this);
++        }
++        return InteractionResult.sidedSuccess(this.level().isClientSide);
++    }
++
++    @Override
++    public LivingEntity getControllingPassenger() {
++        return this.getFirstPassenger() instanceof Player ? (Player) this.getFirstPassenger() : null;
++    }
++
++    @Override
++    protected void tickRidden(Player player, Vec3 movementInput) {
++        super.tickRidden(player, movementInput);
++
++        this.setYRot(player.getYRot());
++        this.yRotO = this.getYRot();
++        this.setXRot(player.getXRot() * 0.5F);
++        this.setRot(this.getYRot(), this.getXRot());
++        this.yBodyRot = this.getYRot();
++        this.yHeadRot = this.yBodyRot;
++
++        float forward = player.zza;
++        float strafe = player.xxa;
++
++        if (forward <= 0.0F) {
++            forward *= 0.25F;
++        } else {
++            forward *= 2.5F;
++        }
++
++        this.setSpeed(0.5F);
++        super.travel(new Vec3(strafe, movementInput.y, forward));
++    }
++}
+--- /dev/null
++++ b/fabric-example-mod/src/client/java/com/example/client/CarEntityModel.java
+@@ -0,0 +1,50 @@
++package com.example.client;
++
++import com.example.CarEntity;
++import net.minecraft.client.model.EntityModel;
++import net.minecraft.client.model.geom.ModelPart;
++import net.minecraft.client.model.geom.PartPose;
++import net.minecraft.client.model.geom.builders.CubeListBuilder;
++import net.minecraft.client.model.geom.builders.LayerDefinition;
++import net.minecraft.client.model.geom.builders.MeshDefinition;
++import net.minecraft.client.model.geom.builders.PartDefinition;
++import com.mojang.blaze3d.vertex.PoseStack;
++import com.mojang.blaze3d.vertex.VertexConsumer;
++
++public class CarEntityModel extends EntityModel<CarEntity> {
++    private final ModelPart root;
++
++    public CarEntityModel(ModelPart root) {
++        this.root = root.getChild("root");
++    }
++
++    public static LayerDefinition getTexturedModelData() {
++        MeshDefinition meshdefinition = new MeshDefinition();
++        PartDefinition partdefinition = meshdefinition.getRoot();
++
++        PartDefinition rootPart = partdefinition.addOrReplaceChild("root", CubeListBuilder.create(), PartPose.offset(0.0F, 24.0F, 0.0F));
++        rootPart.addOrReplaceChild("chassis", CubeListBuilder.create().texOffs(0, 0).addBox(-16.0F, -8.0F, -24.0F, 32.0F, 6.0F, 48.0F), PartPose.offset(0.0F, 0.0F, 0.0F));
++        rootPart.addOrReplaceChild("cabin", CubeListBuilder.create().texOffs(0, 54).addBox(-12.0F, -14.0F, -10.0F, 24.0F, 6.0F, 20.0F), PartPose.offset(0.0F, 0.0F, 0.0F));
++        rootPart.addOrReplaceChild("spoiler", CubeListBuilder.create().texOffs(0, 80).addBox(-15.0F, -18.0F, 20.0F, 30.0F, 2.0F, 8.0F), PartPose.offset(0.0F, 0.0F, 0.0F));
++        rootPart.addOrReplaceChild("spoiler_strut_left", CubeListBuilder.create().texOffs(80, 80).addBox(10.0F, -16.0F, 22.0F, 2.0F, 8.0F, 4.0F), PartPose.offset(0.0F, 0.0F, 0.0F));
++        rootPart.addOrReplaceChild("spoiler_strut_right", CubeListBuilder.create().texOffs(80, 80).addBox(-12.0F, -16.0F, 22.0F, 2.0F, 8.0F, 4.0F), PartPose.offset(0.0F, 0.0F, 0.0F));
++        rootPart.addOrReplaceChild("wheel_front_left", CubeListBuilder.create().texOffs(112, 0).addBox(-4.0F, -4.0F, -4.0F, 8.0F, 8.0F, 8.0F), PartPose.offset(-16.0F, -4.0F, -16.0F));
++        rootPart.addOrReplaceChild("wheel_front_right", CubeListBuilder.create().texOffs(112, 0).addBox(-4.0F, -4.0F, -4.0F, 8.0F, 8.0F, 8.0F), PartPose.offset(16.0F, -4.0F, -16.0F));
++        rootPart.addOrReplaceChild("wheel_rear_left", CubeListBuilder.create().texOffs(112, 0).addBox(-4.0F, -4.0F, -4.0F, 8.0F, 8.0F, 8.0F), PartPose.offset(-16.0F, -4.0F, 16.0F));
++        rootPart.addOrReplaceChild("wheel_rear_right", CubeListBuilder.create().texOffs(112, 0).addBox(-4.0F, -4.0F, -4.0F, 8.0F, 8.0F, 8.0F), PartPose.offset(16.0F, -4.0F, 16.0F));
++
++        return LayerDefinition.create(meshdefinition, 256, 128);
++    }
++
++    @Override
++    public void setupAnim(CarEntity entity, float limbSwing, float limbSwingAmount, float ageInTicks, float netHeadYaw, float headPitch) {
++        float wheelSpin = limbSwing * 0.5f;
++        root.getChild("wheel_front_left").xRot = wheelSpin;
++        root.getChild("wheel_front_right").xRot = wheelSpin;
++        root.getChild("wheel_rear_left").xRot = wheelSpin;
++        root.getChild("wheel_rear_right").xRot = wheelSpin;
++    }
++
++    @Override
++    public void renderToBuffer(PoseStack poseStack, VertexConsumer vertexConsumer, int packedLight, int packedOverlay, int color) {
++        root.render(poseStack, vertexConsumer, packedLight, packedOverlay, color);
++    }
++}
+--- /dev/null
++++ b/fabric-example-mod/src/client/java/com/example/client/CarEntityRenderer.java
+@@ -0,0 +1,19 @@
++package com.example.client;
++
++import com.example.CarEntity;
++import net.minecraft.client.renderer.entity.EntityRendererProvider;
++import net.minecraft.client.renderer.entity.MobRenderer;
++import net.minecraft.util.Identifier;
++
++public class CarEntityRenderer extends MobRenderer<CarEntity, CarEntityModel> {
++    private static final Identifier TEXTURE = Identifier.of("jeskocar", "textures/entity/car.png");
++
++    public CarEntityRenderer(EntityRendererProvider.Context context) {
++        super(context, new CarEntityModel(context.bakeLayer(ExampleModClient.MODEL_CAR_LAYER)), 1.5f);
++    }
++
++    @Override
++    public Identifier getTextureLocation(CarEntity entity) {
++        return TEXTURE;
++    }
++}
+--- /dev/null
++++ b/fabric-example-mod/src/client/java/com/example/client/ExampleModClient.java
+@@ -0,0 +1,17 @@
++package com.example.client;
++
++import com.example.ExampleMod;
++import net.fabricmc.api.ClientModInitializer;
++import net.fabricmc.fabric.api.client.rendering.v1.EntityModelLayerRegistry;
++import net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry;
++import net.minecraft.client.model.geom.ModelLayerLocation;
++import net.minecraft.util.Identifier;
++
++public class ExampleModClient implements ClientModInitializer {
++    public static final ModelLayerLocation MODEL_CAR_LAYER = new ModelLayerLocation(Identifier.of(ExampleMod.MOD_ID, "car"), "main");
++
++    @Override
++    public void onInitializeClient() {
++        EntityModelLayerRegistry.registerModelLayer(MODEL_CAR_LAYER, CarEntityModel::getTexturedModelData);
++        EntityRendererRegistry.register(ExampleMod.CAR_ENTITY, CarEntityRenderer::new);
++    }
++}
